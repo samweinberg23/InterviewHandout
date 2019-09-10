@@ -1,16 +1,17 @@
 import mock_db
 import uuid
 from worker import worker_main
+import time
 from threading import Thread
 
-def lock_is_free():
+
+def lock_is_free(val):
     """
         CHANGE ME, POSSIBLY MY ARGS
 
         Return whether the lock is free
     """
-
-    return True
+    return not db.find_one({"_id": val})
 
 
 def attempt_run_worker(worker_hash, give_up_after, db, retry_interval):
@@ -27,9 +28,22 @@ def attempt_run_worker(worker_hash, give_up_after, db, retry_interval):
                             until the lock is free, unless we have been trying for more
                             than give_up_after seconds
     """
-
-    if lock_is_free():
+    start_time = time.time()
+    try:
+        db.insert_one({"_id": 1})
+    except:
+        while not lock_is_free(1):
+            time.sleep(retry_interval)
+            if time.time() - start_time >= give_up_after:
+                return
+        attempt_run_worker(worker_hash, give_up_after, db, retry_interval)
+        return
+    try:
         worker_main(worker_hash, db)
+        db.delete_one({"_id": 1})
+    except:
+        if not lock_is_free(1):
+            db.delete_one({"_id": 1})
 
 
 if __name__ == "__main__":
